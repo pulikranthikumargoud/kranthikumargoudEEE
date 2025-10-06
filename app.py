@@ -18,7 +18,6 @@ from telegram.ext import (
 )
 
 # --- Basic Logging Setup ---
-# This helps in debugging by showing events and errors in your service logs.
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -27,11 +26,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 # --- Securely Load Configuration from Environment Variables ---
-# 🔑 Your secrets must be set in your hosting environment (e.g., Render).
 try:
     TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
     OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-    WEBHOOK_URL = os.environ["RENDER_EXTERNAL_URL"] # Render provides this automatically
+    WEBHOOK_URL = os.environ["RENDER_EXTERNAL_URL"] 
 except KeyError as e:
     LOGGER.critical(f"❌ FATAL ERROR: Environment variable not found: {e}")
     sys.exit(1)
@@ -43,15 +41,15 @@ WELCOME_MESSAGE = (
     "For more updates, join @kranthikumargoudEEE."
 )
 USER_DATA_FILE = "users.txt"
+TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
 
 # --- Helper Function: Store User Info ---
 def store_user(chat_id: int, username: str, first_name: str):
     """Appends a new user's information to a text file."""
     try:
-        # 'a+' mode creates the file if it doesn't exist.
         with open(USER_DATA_FILE, "a+") as f:
-            f.seek(0) # Go to the start of the file to check if user exists
+            f.seek(0)
             if str(chat_id) not in f.read():
                 f.write(f"{chat_id},{username},{first_name}\n")
                 LOGGER.info(f"✅ New user stored: {first_name} (@{username})")
@@ -74,16 +72,13 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     chat_id = update.effective_chat.id
     
-    # Ensure user is stored if they start by just chatting
     user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
 
     try:
-        # Let the user know the bot is working
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        # Make the API call to OpenRouter
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -91,15 +86,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "deepseek/deepseek-chat-v3.1",  # <-- UPDATED to your chosen model
+                "model": "deepseek/deepseek-chat-v3.1",
                 "messages": [{"role": "user", "content": user_input}],
             },
-            timeout=30  # Wait a maximum of 30 seconds for a response
+            timeout=30
         )
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         data = response.json()
 
-        # Extract the reply from the JSON response
         if data.get("choices") and data["choices"][0].get("message"):
             reply = data["choices"][0]["message"]["content"]
         else:
@@ -111,12 +105,19 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = "Sorry, the request took too long. Please try again."
     except requests.exceptions.RequestException as e:
         LOGGER.error(f"Network error during API call: {e}")
-        reply = "I'm having trouble connecting to the AI service right now. Please check back later."
+        reply = "I'm having trouble connecting to the AI service right now."
     except Exception as e:
         LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
         reply = "An unexpected error occurred. I've notified my developer."
 
-    await update.message.reply_text(reply)
+    # --- NEW: Smartly send the reply, splitting if necessary ---
+    if len(reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
+        await update.message.reply_text(reply)
+    else:
+        LOGGER.info("Response is too long, splitting into multiple messages.")
+        for i in range(0, len(reply), TELEGRAM_MAX_MESSAGE_LENGTH):
+            chunk = reply[i:i + TELEGRAM_MAX_MESSAGE_LENGTH]
+            await update.message.reply_text(chunk)
 
 
 # --- Main Application Setup ---
@@ -124,17 +125,13 @@ def main() -> None:
     """Sets up and runs the Telegram bot."""
     LOGGER.info("🚀 Starting bot...")
     
-    # Create the Application
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Register handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    # Get port from environment or default to 10000 for Render
     port = int(os.environ.get("PORT", 10000))
 
-    # Configure and run the webhook
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
