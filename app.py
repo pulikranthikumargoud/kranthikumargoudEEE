@@ -1,15 +1,8 @@
 import os
 import requests
-import threading
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # === Replace with your real tokens ===
 TELEGRAM_BOT_TOKEN = "8210399902:AAFth1BQPkeaPl92UYjfCjg7YaEh9IwWtDM"
@@ -17,78 +10,58 @@ OPENROUTER_API_KEY = "sk-or-v1-e2db9eddfc8d237d04b751b9cfd28628327b500c689003998
 WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"  # Your Render URL
 
 WELCOME_MESSAGE = (
-    "👋 Welcome! Join @kranthikumargoudEEE for other updates.\n"
+    "👋 Welcome! Join @kranthikumargoudEEE for updates.\n"
     "You may ask any questions here."
 )
 
-# --- Create Telegram bot app ---
-app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# --- Telegram bot app ---
+bot_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME_MESSAGE)
 
-# --- Message Handler ---
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-
     try:
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://render.com",
             },
-            json={
-                "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": user_input}],
-            },
+            json={"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": user_input}]},
         )
-
         data = response.json()
-
-        if "choices" in data:
-            reply = data["choices"][0]["message"]["content"]
-        else:
-            error_message = data.get("error", {}).get("message", "Unknown error from API.")
-            reply = f"⚠️ API Error: {error_message}"
-
+        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "⚠️ API Error")
     except Exception as e:
         reply = f"❌ Something went wrong: {str(e)}"
 
     await update.message.reply_text(reply)
 
-# --- Add handlers ---
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-# --- Flask server setup ---
+# --- Flask server ---
 flask_app = Flask(__name__)
 
 @flask_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), app.bot)
-    app.update_queue.put(update)
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    # Properly schedule update processing
+    bot_app.update_queue.put_nowait(update)
     return "ok"
 
 @flask_app.route('/')
 def home():
-    return "🤖 Telegram bot is live on Render!", 200
+    return "🤖 Telegram bot is live!", 200
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
-
-# --- Set webhook on startup ---
 async def set_webhook():
-    await app.bot.set_webhook(f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
+    await bot_app.bot.set_webhook(f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
     print("✅ Webhook set successfully!")
 
 if __name__ == "__main__":
     import asyncio
-    # Start Flask in background thread
-    threading.Thread(target=run_flask).start()
-    # Set webhook and run bot
-    asyncio.run(set_webhook())
-    app.run_polling()
+    asyncio.run(set_webhook())       # Set webhook once
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host="0.0.0.0", port=port)
+
