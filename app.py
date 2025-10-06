@@ -45,6 +45,13 @@ USER_DATA_FILE = "users.txt"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
 
+# --- NEW: MarkdownV2 Escaping Function ---
+def escape_markdown_v2(text: str) -> str:
+    """Escapes characters for Telegram's MarkdownV2 parser."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return ''.join([f'\\{char}' if char in escape_chars else char for char in text])
+
+
 # --- Helper Function: Store User Info ---
 def store_user(chat_id: int, username: str, first_name: str):
     """Appends a new user's information to a text file."""
@@ -112,13 +119,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
         reply = "An unexpected error occurred. I've notified my developer."
 
-    # --- Smartly send the reply, splitting if necessary and parsing Markdown ---
-    if len(reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
-        await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN_V2)
+    # --- Smartly send the reply, escaping and splitting if necessary ---
+    safe_reply = escape_markdown_v2(reply)
+    if len(safe_reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
+        await update.message.reply_text(safe_reply, parse_mode=ParseMode.MARKDOWN_V2)
     else:
         LOGGER.info("Response is too long, splitting into multiple messages.")
-        for i in range(0, len(reply), TELEGRAM_MAX_MESSAGE_LENGTH):
-            chunk = reply[i:i + TELEGRAM_MAX_MESSAGE_LENGTH]
+        for i in range(0, len(safe_reply), TELEGRAM_MAX_MESSAGE_LENGTH):
+            chunk = safe_reply[i:i + TELEGRAM_MAX_MESSAGE_LENGTH]
             await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN_V2)
 
 
@@ -135,7 +143,7 @@ def main() -> None:
     port = int(os.environ.get("PORT", 10000))
 
     application.run_webhook(
-        listen="0.0.0.0",  # Corrected: Listen on the local network interface
+        listen="0.0.0.0",
         port=port,
         url_path=TELEGRAM_BOT_TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
