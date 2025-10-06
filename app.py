@@ -1,13 +1,21 @@
 import os
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import asyncio
 
-# --- YOUR TOKENS ---
+# --- TOKENS & CONFIG ---
 TELEGRAM_BOT_TOKEN = "8210399902:AAFth1BQPkeaPl92UYjfCjg7YaEh9IwWtDM"
 OPENROUTER_API_KEY = "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"
-WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"
+WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"  # Your Render URL
 
+# --- Flask app setup ---
+flask_app = Flask(__name__)
+
+# --- Telegram app setup ---
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
 # --- START MESSAGE ---
 WELCOME_MESSAGE = (
@@ -15,11 +23,11 @@ WELCOME_MESSAGE = (
     "You may ask any questions here."
 )
 
-# --- Start Command ---
+# --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME_MESSAGE)
 
-# --- Message Handler ---
+# --- Chat handler ---
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
 
@@ -50,34 +58,33 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-
-# --- Run Bot ---
-app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# --- Add handlers ---
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-app.run_polling()
-from flask import Flask, request
-import threading
 
-flask_app = Flask(__name__)
-
-@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+# --- Webhook endpoint ---
+@flask_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    app.update_queue.put(update)
-    return "ok"
+    asyncio.run(app.process_update(update))
+    return "ok", 200
 
-@flask_app.route('/')
+# --- Root check route ---
+@flask_app.route("/")
 def home():
-    return "🤖 Telegram bot is live on Render!", 200
+    return "🤖 Telegram bot is live and connected!", 200
 
-def run_flask():
+# --- Start Flask server ---
+if __name__ == "__main__":
+    import threading
+
+    # Set webhook automatically
+    async def set_webhook():
+        webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
+        await bot.delete_webhook()
+        await bot.set_webhook(url=webhook_url)
+        print(f"✅ Webhook set to: {webhook_url}")
+
+    threading.Thread(target=lambda: asyncio.run(set_webhook())).start()
+
     flask_app.run(host="0.0.0.0", port=5000)
-
-threading.Thread(target=run_flask).start()
-
-# Set webhook URL automatically
-async def set_webhook():
-    await bot.set_webhook(f"{WEBHOOK_URL}/{BOT_TOKEN}")
-
-app.run(set_webhook())
