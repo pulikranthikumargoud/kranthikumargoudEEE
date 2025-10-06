@@ -11,7 +11,7 @@ from telegram.ext import (
 
 # === Replace with your real tokens ===
 TELEGRAM_BOT_TOKEN = "8210399902:AAFth1BQPkeaPl92UYjfCjg7YaEh9IwWtDM"
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"  # Your Render URL
 
 # --- Start message ---
