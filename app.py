@@ -1,90 +1,70 @@
 import os
-import requests
-from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import logging
 import asyncio
+from flask import Flask, request
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# --- TOKENS & CONFIG ---
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+
+# === Replace with your real tokens ===
 TELEGRAM_BOT_TOKEN = "8210399902:AAFth1BQPkeaPl92UYjfCjg7YaEh9IwWtDM"
 OPENROUTER_API_KEY = "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"
 WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"  # Your Render URL
 
-# --- Flask app setup ---
+# Flask app for Render
 flask_app = Flask(__name__)
 
-# --- Telegram app setup ---
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
-app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# Telegram bot setup
+application = Application.builder().token(BOT_TOKEN).build()
 
-# --- START MESSAGE ---
-WELCOME_MESSAGE = (
-    "👋 Welcome! Join @kranthikumargoudEEE for other updates.\n"
-    "You may ask any questions here."
-)
-
-# --- /start command ---
+# === Define bot behavior ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME_MESSAGE)
+    await update.message.reply_text(
+        "👋 Welcome! Join @kranthikumargoudEEE for updates.\nYou may ask any questions here."
+    )
 
-# --- Chat handler ---
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-
+    user_message = update.message.text
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://render.com",
-            },
-            json={
-                "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": user_input}],
-            },
-        )
+        import httpx
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "model": "gpt-3.5-turbo",
+            "messages": [{"role": "user", "content": user_message}],
+        }
 
-        data = response.json()
-
-        if "choices" in data:
-            reply = data["choices"][0]["message"]["content"]
-        else:
-            error_message = data.get("error", {}).get("message", "Unknown error from API.")
-            reply = f"⚠️ API Error: {error_message}"
-
+        async with httpx.AsyncClient() as client:
+            response = await client.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
+            response_data = response.json()
+            reply = response_data["choices"][0]["message"]["content"]
     except Exception as e:
-        reply = f"❌ Something went wrong: {str(e)}"
+        reply = f"⚠️ Error: {e}"
 
     await update.message.reply_text(reply)
 
-# --- Add handlers ---
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+# === Register handlers ===
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-# --- Webhook endpoint ---
-@flask_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+# === Webhook route ===
+@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(app.process_update(update))
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    asyncio.run(application.process_update(update))
     return "ok", 200
 
-# --- Root check route ---
 @flask_app.route("/")
-def home():
-    return "🤖 Telegram bot is live and connected!", 200
+def index():
+    return "Bot is live! 🚀"
 
-# --- Start Flask server ---
+# === Start bot ===
 if __name__ == "__main__":
-    import threading
+    PORT = int(os.environ.get("PORT", 5000))
+    asyncio.get_event_loop().run_until_complete(application.initialize())
+    flask_app.run(host="0.0.0.0", port=PORT)
 
-    # Set webhook automatically
-    async def set_webhook():
-        webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
-        await bot.delete_webhook()
-        await bot.set_webhook(url=webhook_url)
-        print(f"✅ Webhook set to: {webhook_url}")
-
-    threading.Thread(target=lambda: asyncio.run(set_webhook())).start()
-
-    flask_app.run(host="0.0.0.0", port=5000)
