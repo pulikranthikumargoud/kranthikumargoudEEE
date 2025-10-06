@@ -1,113 +1,147 @@
+# -*- coding: utf-8 -*-
+"""
+A secure and robust Telegram bot that uses the OpenRouter API for chat completions.
+This bot is designed for webhook deployment on services like Render.
+"""
+
 import os
+import sys
+import logging
 import requests
 from telegram import Update, Bot
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
     ContextTypes,
     filters,
 )
 
-# === Replace with your real tokens ===
-TELEGRAM_BOT_TOKEN = "8210399902:AAFth1BQPkeaPl92UYjfCjg7YaEh9IwWtDM"
-OPENROUTER_API_KEY = "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"
-WEBHOOK_URL = "https://kranthikumargoudeee-ai.onrender.com"  # Your Render URL
-
-# --- Start message ---
-WELCOME_MESSAGE = (
-    "👋 Welcome! Join @kranthikumargoudEEE for other updates.\n"
-    "You may ask any questions here."
+# --- Basic Logging Setup ---
+# This helps in debugging by showing events and errors in your service logs.
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
+LOGGER = logging.getLogger(__name__)
 
-# --- Helper: Store user info ---
-def store_user(chat_id, username, first_name):
-    with open("users.txt", "a") as f:
-        f.write(f"{chat_id},{username},{first_name}\n")
-    print(f"✅ Stored user: {first_name} (@{username}), chat_id={chat_id}")
 
-# --- Start Command ---
+# --- Securely Load Configuration from Environment Variables ---
+# 🔑 Your secrets must be set in your hosting environment (e.g., Render).
+try:
+    TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+    OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+    WEBHOOK_URL = os.environ["RENDER_EXTERNAL_URL"] # Render provides this automatically
+except KeyError as e:
+    LOGGER.critical(f"❌ FATAL ERROR: Environment variable not found: {e}")
+    sys.exit(1)
+
+
+# --- Bot Configuration & Constants ---
+WELCOME_MESSAGE = (
+    "👋 Welcome! I am an AI assistant. Ask me anything!\n\n"
+    "For more updates, join @kranthikumargoudEEE."
+)
+USER_DATA_FILE = "users.txt"
+
+
+# --- Helper Function: Store User Info ---
+def store_user(chat_id: int, username: str, first_name: str):
+    """Appends a new user's information to a text file."""
+    try:
+        # 'a+' mode creates the file if it doesn't exist.
+        with open(USER_DATA_FILE, "a+") as f:
+            f.seek(0) # Go to the start of the file to check if user exists
+            if str(chat_id) not in f.read():
+                f.write(f"{chat_id},{username},{first_name}\n")
+                LOGGER.info(f"✅ New user stored: {first_name} (@{username})")
+    except IOError as e:
+        LOGGER.error(f"⚠️ Could not write to {USER_DATA_FILE}: {e}")
+
+
+# --- Command Handler: /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    username = update.message.from_user.username or "N/A"
-    first_name = update.message.from_user.first_name or "N/A"
+    """Handles the /start command, stores the user, and sends a welcome message."""
+    user = update.effective_user
+    if user:
+        store_user(user.id, user.username or "N/A", user.first_name or "N/A")
+        await update.message.reply_text(WELCOME_MESSAGE)
 
-    # Log and store user
-    print(f"User started the bot: {first_name} (@{username}), chat_id={chat_id}")
-    store_user(chat_id, username, first_name)
 
-    # Reply to user
-    await update.message.reply_text(WELCOME_MESSAGE)
-    await update.message.reply_text(f"Your chat ID is: {chat_id}")
-
-# --- Message Handler ---
+# --- Message Handler: Manages AI Chat Logic ---
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processes user messages, gets a response from OpenRouter, and replies."""
     user_input = update.message.text
-    chat_id = update.message.chat_id
-
-    # Store user if not already stored
-    username = update.message.from_user.username or "N/A"
-    first_name = update.message.from_user.first_name or "N/A"
-    store_user(chat_id, username, first_name)
+    chat_id = update.effective_chat.id
+    
+    # Ensure user is stored if they start by just chatting
+    user = update.effective_user
+    if user:
+        store_user(user.id, user.username or "N/A", user.first_name or "N/A")
 
     try:
+        # Let the user know the bot is working
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+        # Make the API call to OpenRouter
         response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            url="https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://render.com",
             },
             json={
-                "model": "gpt-3.5-turbo",
+                "model": "openai/gpt-3.5-turbo",  # Using a free, reliable model
                 "messages": [{"role": "user", "content": user_input}],
             },
+            timeout=30  # Wait a maximum of 30 seconds for a response
         )
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
         data = response.json()
 
-        if "choices" in data:
+        # Extract the reply from the JSON response
+        if data.get("choices") and data["choices"][0].get("message"):
             reply = data["choices"][0]["message"]["content"]
         else:
-            reply = f"⚠️ API Error: {data.get('error', {}).get('message', 'Unknown error')}"
+            LOGGER.error(f"API response missing 'choices' structure: {data}")
+            reply = "Sorry, I received an unexpected response from the AI. Please try again."
+
+    except requests.exceptions.Timeout:
+        LOGGER.warning("API request timed out.")
+        reply = "Sorry, the request took too long. Please try again."
+    except requests.exceptions.RequestException as e:
+        LOGGER.error(f"Network error during API call: {e}")
+        reply = "I'm having trouble connecting to the AI service right now. Please check back later."
     except Exception as e:
-        reply = f"❌ Something went wrong: {str(e)}"
+        LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
+        reply = "An unexpected error occurred. I've notified my developer."
 
     await update.message.reply_text(reply)
 
-# --- Proactive messaging function ---
-def send_proactive_message(text):
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
-    if not os.path.exists("users.txt"):
-        print("No users found to send messages.")
-        return
 
-    with open("users.txt", "r") as f:
-        users = f.readlines()
+# --- Main Application Setup ---
+def main() -> None:
+    """Sets up and runs the Telegram bot."""
+    LOGGER.info("🚀 Starting bot...")
+    
+    # Create the Application
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    for line in users:
-        chat_id, username, first_name = line.strip().split(",", 2)
-        try:
-            bot.send_message(chat_id=int(chat_id), text=text)
-            print(f"✅ Message sent to {first_name} (@{username}), chat_id={chat_id}")
-        except Exception as e:
-            print(f"❌ Failed to send message to {chat_id}: {e}")
+    # Register handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-# --- Main ---
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # Get port from environment or default to 10000 for Render
+    port = int(os.environ.get("PORT", 10000))
 
-    # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    # Run webhook
-    PORT = int(os.environ.get("PORT", 10000))
-    app.run_webhook(
+    # Configure and run the webhook
+    application.run_webhook(
         listen="0.0.0.0",
-        port=PORT,
+        port=port,
         url_path=TELEGRAM_BOT_TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
     )
+    LOGGER.info(f"✅ Bot is live and listening on port {port}")
 
-    print(f"✅ Bot is live at {WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
-    print("📌 Users will be stored automatically for proactive messaging.")
+if __name__ == "__main__":
+    main()
