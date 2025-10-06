@@ -135,7 +135,7 @@ def main() -> None:
     port = int(os.environ.get("PORT", 10000))
 
     application.run_webhook(
-        listen="https://kranthikumargoudeee-ai.onrender.com",
+        listen="0.0.0.0",  # Corrected: Listen on the local network interface
         port=port,
         url_path=TELEGRAM_BOT_TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
