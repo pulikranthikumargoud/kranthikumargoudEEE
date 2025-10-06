@@ -9,6 +9,7 @@ import sys
 import logging
 import requests
 from telegram import Update, Bot
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -87,7 +88,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "HTTP-Referer": f"{WEBHOOK_URL}",
             },
             json={
-                "model": "meta-llama/llama-4-maverick",  # <-- UPDATED to your chosen model
+                "model": "meta-llama/llama-4-maverick",
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
@@ -111,14 +112,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
         reply = "An unexpected error occurred. I've notified my developer."
 
-    # --- Smartly send the reply, splitting if necessary ---
+    # --- Smartly send the reply, splitting if necessary and parsing Markdown ---
     if len(reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
-        await update.message.reply_text(reply)
+        await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN_V2)
     else:
         LOGGER.info("Response is too long, splitting into multiple messages.")
         for i in range(0, len(reply), TELEGRAM_MAX_MESSAGE_LENGTH):
             chunk = reply[i:i + TELEGRAM_MAX_MESSAGE_LENGTH]
-            await update.message.reply_text(chunk)
+            await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 # --- Main Application Setup ---
@@ -134,7 +135,7 @@ def main() -> None:
     port = int(os.environ.get("PORT", 10000))
 
     application.run_webhook(
-        listen="0.0.0.0",
+        listen="https://kranthikumargoudeee-ai.onrender.com",
         port=port,
         url_path=TELEGRAM_BOT_TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
