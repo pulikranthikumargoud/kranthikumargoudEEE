@@ -87,7 +87,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "HTTP-Referer": f"{WEBHOOK_URL}",
             },
             json={
-                "model": "meta-llama/llama-3-8b-instruct",  # <-- UPDATED to a verified, working model
+                "model": "meta-llama/llama-4-maverick",  # <-- UPDATED to your chosen model
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
