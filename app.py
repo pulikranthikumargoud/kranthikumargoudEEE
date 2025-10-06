@@ -54,17 +54,28 @@ app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 app.run_polling()
-from flask import Flask
+from flask import Flask, request
 import threading
 
 flask_app = Flask(__name__)
 
+@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    app.update_queue.put(update)
+    return "ok"
+
 @flask_app.route('/')
 def home():
-    return "Bot is running fine! 🚀"
+    return "🤖 Telegram bot is live on Render!", 200
 
 def run_flask():
     flask_app.run(host="0.0.0.0", port=5000)
 
 threading.Thread(target=run_flask).start()
 
+# Set webhook URL automatically
+async def set_webhook():
+    await bot.set_webhook(f"{WEBHOOK_URL}/{BOT_TOKEN}")
+
+app.run(set_webhook())
