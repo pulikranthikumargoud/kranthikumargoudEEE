@@ -91,7 +91,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "openai/gpt-3.5-turbo",  # Using a free, reliable model
+                "model": "deepseek/deepseek-chat-v3.1",  # <-- UPDATED to your chosen model
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30  # Wait a maximum of 30 seconds for a response
