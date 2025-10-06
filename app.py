@@ -86,7 +86,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "deepseek/deepseek-chat-v3.1",
+                "model": "google/gemini-1.5-flash",  # <-- UPDATED to Gemini 1.5 Flash
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
@@ -110,7 +110,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
         reply = "An unexpected error occurred. I've notified my developer."
 
-    # --- NEW: Smartly send the reply, splitting if necessary ---
+    # --- Smartly send the reply, splitting if necessary ---
     if len(reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
         await update.message.reply_text(reply)
     else:
