@@ -84,9 +84,11 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             headers={
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
+                # THIS HEADER IS REQUIRED FOR GOOGLE MODELS
+                "HTTP-Referer": f"{WEBHOOK_URL}",
             },
             json={
-                "model": "google/gemini-1.5-flash",  # <-- UPDATED to Gemini 1.5 Flash
+                "model": "google/gemini-1.5-flash",
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
