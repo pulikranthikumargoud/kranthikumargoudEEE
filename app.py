@@ -79,16 +79,21 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Processes user messages, gets a response from OpenRouter, and replies."""
     user_input = update.message.text
     chat_id = update.effective_chat.id
+    user = update.effective_user
     lower_input = user_input.lower()
+    
+    # --- NEW: Log the user's name and their question ---
+    if user:
+        LOGGER.info(f"💬 User '{user.first_name}' (@{user.username}) asked: '{user_input}'")
 
-    # --- NEW: More Specific Keyword Logic ---
+    # --- Specific Keyword Logic ---
 
     # Rule 1: Check for questions directed at the bot ("you" or "your")
     bot_identity_triggers = ['you', 'your']
     role_keywords = [
         "admin", "administrator", "owner", "boss", "head", "leader", "manager",
         "supervisor", "mod", "moderator", "creator", "founder", "maker",
-        "builder", "developer", "contact", "support", "help", "created", "made" , "creater"
+        "builder", "developer", "contact", "support", "help", "created", "made"
     ]
     
     if any(trigger in lower_input for trigger in bot_identity_triggers) and \
@@ -100,12 +105,10 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     owner_names = ["kranthikumargoudEEE", "kranthikumargoud", "kranthikumar", "kranthi"]
     for name in owner_names:
         if name in lower_input:
-            # Capitalize the found name for a proper response
             await update.message.reply_text(f"{name.capitalize()} is my owner and creator.")
             return
 
     # --- If no keywords match, proceed to the AI ---
-    user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
 
