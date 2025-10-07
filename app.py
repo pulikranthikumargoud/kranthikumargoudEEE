@@ -81,15 +81,18 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     lower_input = user_input.lower()
 
-    # --- NEW: Specific Keyword Logic ---
+    # --- NEW: More Specific Keyword Logic ---
 
-    # Rule 1: Check for questions specifically about "your" admin/creator
-    your_admin_keywords = [
+    # Rule 1: Check for questions directed at the bot ("you" or "your")
+    bot_identity_triggers = ['you', 'your']
+    role_keywords = [
         "admin", "administrator", "owner", "boss", "head", "leader", "manager",
         "supervisor", "mod", "moderator", "creator", "founder", "maker",
-        "builder", "developer", "contact", "support", "help"
+        "builder", "developer", "contact", "support", "help", "created", "made"
     ]
-    if 'your' in lower_input and any(keyword in lower_input for keyword in your_admin_keywords):
+    
+    if any(trigger in lower_input for trigger in bot_identity_triggers) and \
+       any(keyword in lower_input for keyword in role_keywords):
         await update.message.reply_text("@kranthikumargoudEEE")
         return
 
