@@ -80,7 +80,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     chat_id = update.effective_chat.id
 
-    # --- NEW: Check for an expanded list of keywords ---
+    # --- Check for admin/owner/support keywords ---
     lower_input = user_input.lower()
     admin_keywords = [
         # Authority/Leadership
@@ -98,7 +98,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("@kranthikumargoudEEE")
         return  # Stop the function here and don't call the AI
 
-    # --- If no keywords are found, proceed as normal ---
+    # --- If no keywords are found, proceed to ask the AI ---
     user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
@@ -114,7 +114,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "HTTP-Referer": f"{WEBHOOK_URL}",
             },
             json={
-                "model": "google/gemini-1.5-flash",  # Fastest free model
+                "model": "meta-llama/llama-4-maverick",
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
@@ -153,7 +153,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main() -> None:
     """Sets up and runs the Telegram bot."""
     LOGGER.info("🚀 Starting bot...")
-
+    
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
