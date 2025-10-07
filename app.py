@@ -88,7 +88,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role_keywords = [
         "admin", "administrator", "owner", "boss", "head", "leader", "manager",
         "supervisor", "mod", "moderator", "creator", "founder", "maker",
-        "builder", "developer", "contact", "support", "help", "created", "made"
+        "builder", "developer", "contact", "support", "help", "created", "made" , "creater"
     ]
     
     if any(trigger in lower_input for trigger in bot_identity_triggers) and \
