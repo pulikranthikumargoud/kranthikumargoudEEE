@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 try:
     TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
     OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-    WEBHOOK_URL = os.environ["RENDER_EXTERNAL_URL"] 
+    WEBHOOK_URL = os.environ["RENDER_EXTERNAL_URL"]
 except KeyError as e:
     LOGGER.critical(f"❌ FATAL ERROR: Environment variable not found: {e}")
     sys.exit(1)
@@ -45,7 +45,7 @@ USER_DATA_FILE = "users.txt"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
 
-# --- NEW: MarkdownV2 Escaping Function ---
+# --- MarkdownV2 Escaping Function ---
 def escape_markdown_v2(text: str) -> str:
     """Escapes characters for Telegram's MarkdownV2 parser."""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
@@ -79,7 +79,26 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Processes user messages, gets a response from OpenRouter, and replies."""
     user_input = update.message.text
     chat_id = update.effective_chat.id
-    
+
+    # --- NEW: Check for an expanded list of keywords ---
+    lower_input = user_input.lower()
+    admin_keywords = [
+        # Authority/Leadership
+        "admin", "administrator", "owner", "boss", "head", "leader",
+        "manager", "supervisor", "mod", "moderator",
+        # Creation/Origin
+        "creator", "founder", "maker", "builder", "developer", "started by",
+        "who made", "who built",
+        # Contact/Support
+        "contact", "support", "help", "who to message", "reach out", "dm",
+        "tag admin"
+    ]
+
+    if any(keyword in lower_input for keyword in admin_keywords):
+        await update.message.reply_text("@kranthikumargoudEEE")
+        return  # Stop the function here and don't call the AI
+
+    # --- If no keywords are found, proceed as normal ---
     user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
@@ -95,7 +114,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "HTTP-Referer": f"{WEBHOOK_URL}",
             },
             json={
-                "model": "meta-llama/llama-4-maverick",
+                "model": "google/gemini-1.5-flash",  # Fastest free model
                 "messages": [{"role": "user", "content": user_input}],
             },
             timeout=30
@@ -134,7 +153,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main() -> None:
     """Sets up and runs the Telegram bot."""
     LOGGER.info("🚀 Starting bot...")
-    
+
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
