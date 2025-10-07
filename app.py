@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-A secure and robust Telegram bot that uses the OpenRouter API for chat completions.
-This bot is designed for webhook deployment on services like Render.
+A secure and robust Telegram bot that uses the OpenRouter API for chat completions
+and has specific keyword triggers for admin and creator information.
 """
 
 import os
@@ -79,26 +79,29 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Processes user messages, gets a response from OpenRouter, and replies."""
     user_input = update.message.text
     chat_id = update.effective_chat.id
-
-    # --- Check for admin/owner/support keywords ---
     lower_input = user_input.lower()
-    admin_keywords = [
-        # Authority/Leadership
-        "admin", "administrator", "owner", "boss", "head", "leader",
-        "manager", "supervisor", "mod", "moderator",
-        # Creation/Origin
-        "creator", "founder", "maker", "builder", "developer", "started by",
-        "who made", "who built",
-        # Contact/Support
-        "contact", "support", "help", "who to message", "reach out", "dm",
-        "tag admin"
+
+    # --- NEW: Specific Keyword Logic ---
+
+    # Rule 1: Check for questions specifically about "your" admin/creator
+    your_admin_keywords = [
+        "admin", "administrator", "owner", "boss", "head", "leader", "manager",
+        "supervisor", "mod", "moderator", "creator", "founder", "maker",
+        "builder", "developer", "contact", "support", "help"
     ]
-
-    if any(keyword in lower_input for keyword in admin_keywords):
+    if 'your' in lower_input and any(keyword in lower_input for keyword in your_admin_keywords):
         await update.message.reply_text("@kranthikumargoudEEE")
-        return  # Stop the function here and don't call the AI
+        return
 
-    # --- If no keywords are found, proceed to ask the AI ---
+    # Rule 2: Check for mentions of the owner's name
+    owner_names = ["kranthikumargoudEEE", "kranthikumargoud", "kranthikumar", "kranthi"]
+    for name in owner_names:
+        if name in lower_input:
+            # Capitalize the found name for a proper response
+            await update.message.reply_text(f"{name.capitalize()} is my owner and creator.")
+            return
+
+    # --- If no keywords match, proceed to the AI ---
     user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
@@ -153,7 +156,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main() -> None:
     """Sets up and runs the Telegram bot."""
     LOGGER.info("🚀 Starting bot...")
-    
+
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
