@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-A secure and robust Telegram bot that uses the OpenRouter API for chat completions
-and has specific keyword triggers for admin and creator information.
+A secure and robust Telegram bot with conversation memory that uses the OpenRouter API.
 """
 
 import os
@@ -38,7 +37,8 @@ except KeyError as e:
 
 # --- Bot Configuration & Constants ---
 WELCOME_MESSAGE = (
-    "👋 Welcome! I am an AI assistant. Ask me anything!\n\n"
+    "👋 Welcome! I am an AI assistant with memory. Ask me anything!\n\n"
+    "Type /clear to reset my memory of our conversation.\n"
     "For more updates, join @kranthikumargoudEEE."
 )
 USER_DATA_FILE = "users.txt"
@@ -65,13 +65,24 @@ def store_user(chat_id: int, username: str, first_name: str):
         LOGGER.error(f"⚠️ Could not write to {USER_DATA_FILE}: {e}")
 
 
-# --- Command Handler: /start ---
+# --- Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the /start command, stores the user, and sends a welcome message."""
+    """Handles the /start command and clears any previous history."""
     user = update.effective_user
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
-        await update.message.reply_text(WELCOME_MESSAGE)
+    
+    # Clear history on /start to begin a fresh conversation
+    context.chat_data['history'] = []
+    LOGGER.info(f"New conversation started for chat ID: {update.effective_chat.id}")
+    
+    await update.message.reply_text(WELCOME_MESSAGE)
+
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clears the conversation history for the current chat."""
+    context.chat_data['history'] = []
+    await update.message.reply_text("✅ Memory cleared. Let's start a new conversation!")
+    LOGGER.info(f"Conversation history cleared for chat ID: {update.effective_chat.id}")
 
 
 # --- Message Handler: Manages AI Chat Logic ---
@@ -82,11 +93,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     lower_input = user_input.lower()
     
-    # --- NEW: Log the user's name and their question ---
-    if user:
-        LOGGER.info(f"💬 User '{user.first_name}' (@{user.username}) asked: '{user_input}'")
-
-    # --- Specific Keyword Logic ---
+   # --- Specific Keyword Logic ---
 
     # Rule 1: Check for questions directed at the bot ("you" or "your")
     bot_identity_triggers = ['you', 'your']
@@ -108,7 +115,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"{name.capitalize()} is my owner and creator.")
             return
 
-    # --- If no keywords match, proceed to the AI ---
+    # --- Conversation Memory Logic ---
+    # Retrieve history, or create an empty list if it's the first message
+    history = context.chat_data.get('history', [])
+    
+    # Add the new user message to the history
+    history.append({"role": "user", "content": user_input})
+
+    # Ensure user is stored
     if user:
         store_user(user.id, user.username or "N/A", user.first_name or "N/A")
 
@@ -124,30 +138,35 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             },
             json={
                 "model": "meta-llama/llama-4-maverick",
-                "messages": [{"role": "user", "content": user_input}],
+                "messages": history,  # Send the entire conversation history
             },
-            timeout=30
+            timeout=45 # Increased timeout for potentially longer context
         )
         response.raise_for_status()
         data = response.json()
 
         if data.get("choices") and data["choices"][0].get("message"):
-            reply = data["choices"][0]["message"]["content"]
+            reply = data["choices"][0].get("message").get("content", "")
+            # Add the AI's response to the history to be remembered
+            history.append({"role": "assistant", "content": reply})
         else:
             LOGGER.error(f"API response missing 'choices' structure: {data}")
-            reply = "Sorry, I received an unexpected response from the AI. Please try again."
+            reply = "Sorry, I received an unexpected response from the AI."
 
     except requests.exceptions.Timeout:
         LOGGER.warning("API request timed out.")
-        reply = "Sorry, the request took too long. Please try again."
+        reply = "Sorry, the request took too long."
     except requests.exceptions.RequestException as e:
         LOGGER.error(f"Network error during API call: {e}")
-        reply = "I'm having trouble connecting to the AI service right now."
+        reply = "I'm having trouble connecting to the AI service."
     except Exception as e:
         LOGGER.critical(f"An unexpected error occurred in chat handler: {e}")
-        reply = "An unexpected error occurred. I've notified my developer."
+        reply = "An unexpected error occurred."
+        
+    # Save the updated history back to the chat data for the next message
+    context.chat_data['history'] = history
 
-    # --- Smartly send the reply, escaping and splitting if necessary ---
+    # Send the reply
     safe_reply = escape_markdown_v2(reply)
     if len(safe_reply) <= TELEGRAM_MAX_MESSAGE_LENGTH:
         await update.message.reply_text(safe_reply, parse_mode=ParseMode.MARKDOWN_V2)
@@ -165,7 +184,11 @@ def main() -> None:
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
+    # Register all command handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("clear", clear)) # Add the new clear command
+    
+    # Register the message handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
     port = int(os.environ.get("PORT", 10000))
